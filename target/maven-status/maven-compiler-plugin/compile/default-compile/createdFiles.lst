@@ -1,0 +1,6 @@
+app\MainApp.class
+ui\MainWindow.class
+app\RealTimeManager.class
+control\MotorController.class
+hardware\SerialPortManager.class
+ui\MainWindowController.class

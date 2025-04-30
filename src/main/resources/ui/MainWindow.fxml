@@ -9,80 +9,38 @@
 <AnchorPane xmlns:fx="http://javafx.com/fxml/1" fx:controller="ui.MainWindowController">
     <TabPane fx:id="tabPane" prefWidth="800" prefHeight="700">
         <tabs>
-            <!-- Controller Tab -->
-            <Tab text="Controller">
-                <AnchorPane>
-                    <!-- Add ScrollPane to make the content scrollable -->
-                    <ScrollPane fitToWidth="true" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
-                        <content>
-                            <VBox spacing="10">
-                                <padding>
-                                    <Insets top="10" right="10" bottom="10" left="10"/>
-                                </padding>
-
-                                <!-- Sections -->
-                                <TitledPane text="Digital Inputs" expanded="true">
-                                    <VBox fx:id="diVBox" spacing="5"/>
-                                </TitledPane>
-
-                                <TitledPane text="Digital Outputs" expanded="true">
-                                    <VBox fx:id="doVBox" spacing="5"/>
-                                </TitledPane>
-
-                                <TitledPane text="Analog Inputs" expanded="true">
-                                    <VBox fx:id="aiVBox" spacing="5"/>
-                                </TitledPane>
-
-                                <TitledPane text="Analog Outputs" expanded="true">
-                                    <VBox fx:id="aoVBox" spacing="5"/>
-                                </TitledPane>
-
-                                <!-- Log -->
-                                <Label text="Log:"/>
-                                <TextArea fx:id="logArea" prefHeight="150"/>
-                            </VBox>
-                        </content>
-                    </ScrollPane>
-                </AnchorPane>
-            </Tab>
-
             <!-- Configuration Tab -->
+            
             <Tab text="Configuration">
                 <AnchorPane>
                     <VBox spacing="10" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
                         <padding>
                             <Insets top="10" right="10" bottom="10" left="10"/>
                         </padding>
-
-                        <!-- Top - Serial Config -->
+            
+                        <!-- Number of Serial Ports -->
                         <HBox spacing="10">
-                            <Label text="Port:"/>
-                            <ComboBox fx:id="portComboBox" prefWidth="100"/>
-                            <Label text="Baudrate:"/>
-                            <ComboBox fx:id="baudComboBox" prefWidth="100"/>
-                            <Button text="Connect" fx:id="connectButton" onAction="#onConnectButtonClicked"/>
+                            <Label text="Number of Serial Ports:"/>
+                            <TextField fx:id="serialPortCountField" prefWidth="50"/>
+                            <Button text="Set" onAction="#onSetSerialPortCount"/>
                         </HBox>
-
-                        <!-- Config Inputs -->
-                        <HBox spacing="10">
-                            <Label text="DI:"/>
-                            <TextField fx:id="diTextField" prefWidth="70"/>
-                            <Label text="DO:"/>
-                            <TextField fx:id="doTextField" prefWidth="70"/>
-                            <Label text="AI:"/>
-                            <TextField fx:id="aiTextField" prefWidth="70"/>
-                            <Label text="AO:"/>
-                            <TextField fx:id="aoTextField" prefWidth="70"/>
-                            <Button text="Apply Config" onAction="#onApplyConfigClicked"/>
-                        </HBox>
+            
+                        <!-- Scrollable area for serial port configs -->
+                        <ScrollPane fitToWidth="true" fitToHeight="true" VBox.vgrow="ALWAYS">
+                            <content>
+                                <VBox fx:id="serialPortConfigVBox" spacing="10" fillWidth="true"/>
+                            </content>
+                        </ScrollPane>
                     </VBox>
                 </AnchorPane>
             </Tab>
+            <!-- Controller Tab -->
+            
 
             <!-- Components Browser Tab -->
-            <Tab text="Components Browser">
+            <!-- <Tab text="Components Browser">
                 <AnchorPane/>
-            </Tab>
+            </Tab> -->
         </tabs>
     </TabPane>
 </AnchorPane>

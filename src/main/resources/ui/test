@@ -1,0 +1,31 @@
+<Tab text="Configuration">
+    <AnchorPane>
+        <VBox spacing="10" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+
+            <!-- Top - Serial Config -->
+            <HBox spacing="10">
+                <Label text="Port:"/>
+                <ComboBox fx:id="portComboBox" prefWidth="100"/>
+                <Label text="Baudrate:"/>
+                <ComboBox fx:id="baudComboBox" prefWidth="100"/>
+                <Button text="Connect" fx:id="connectButton" onAction="#onConnectButtonClicked"/>
+            </HBox>
+
+            <!-- Config Inputs -->
+            <HBox spacing="10">
+                <Label text="DI:"/>
+                <TextField fx:id="diTextField" prefWidth="70"/>
+                <Label text="DO:"/>
+                <TextField fx:id="doTextField" prefWidth="70"/>
+                <Label text="AI:"/>
+                <TextField fx:id="aiTextField" prefWidth="70"/>
+                <Label text="AO:"/>
+                <TextField fx:id="aoTextField" prefWidth="70"/>
+                <Button text="Apply Config" onAction="#onApplyConfigClicked"/>
+            </HBox>
+        </VBox>
+    </AnchorPane>
+</Tab>

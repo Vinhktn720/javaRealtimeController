@@ -1,5 +1,7 @@
 app\MainApp.class
 ui\MainWindow.class
+ui\MainWindowController$SerialPortConfig.class
+ui\MainWindowController$AIChartConfig.class
 app\RealTimeManager.class
 control\MotorController.class
 hardware\SerialPortManager.class

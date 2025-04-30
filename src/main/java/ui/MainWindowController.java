@@ -27,6 +27,10 @@ public class MainWindowController {
 
     // Store config controls for each port
     private static class SerialPortConfig {
+        TextField aiStartByteField;
+        TextField aoStartByteField;
+        TextField diStartByteField;
+        TextField doStartByteField;
         ComboBox<String> portComboBox;
         ComboBox<Integer> baudComboBox;
         TextField diTextField, doTextField, aiTextField, aoTextField;
@@ -40,6 +44,8 @@ public class MainWindowController {
         List<AIChartConfig> aiChartConfigs = new ArrayList<>();
         int time = 0;
         boolean connected = false;
+        SerialPortManager serialManager;
+        Thread readingThread;
     }
     private static class AIChartConfig {
         int timeWindow = 30;
@@ -51,7 +57,7 @@ public class MainWindowController {
     private volatile boolean running = true;
     private static final int UART_BUFFER_SIZE = 1024;
     private final ByteBuffer uartBuffer = ByteBuffer.allocate(UART_BUFFER_SIZE);
-    private static final byte PACKET_START = 0x7E;
+    // private static final byte PACKET_START = 0x7E;
     private static final byte PACKET_END = 0x33;
 
     private final List<ScheduledFuture<?>> aoAutoTasks = new ArrayList<>();
@@ -60,7 +66,7 @@ public class MainWindowController {
     @FXML
     private void initialize() {
         serialPortCountField.setText("1");
-        startReadingThread();
+
     }
 
     @FXML
@@ -79,101 +85,146 @@ public class MainWindowController {
     
         for (int i = 0; i < count; i++) {
             SerialPortConfig config = new SerialPortConfig();
-    
-            // --- Top row: Port and Baudrate
-            HBox hBoxTop = new HBox(10);
+        
+            // --- Controls
             config.portComboBox = new ComboBox<>();
             config.portComboBox.getItems().addAll(ports);
             if (!ports.isEmpty()) config.portComboBox.setValue(ports.get(0));
-    
+        
             config.baudComboBox = new ComboBox<>();
             config.baudComboBox.getItems().addAll(9600, 115200, 256000);
             config.baudComboBox.setValue(115200);
-    
-            HBox.setHgrow(config.portComboBox, Priority.ALWAYS);
-            HBox.setHgrow(config.baudComboBox, Priority.ALWAYS);
-    
-            hBoxTop.getChildren().addAll(
-                new Label("Port:"), config.portComboBox,
-                new Label("Baud:"), config.baudComboBox
-            );
-    
-            // --- GridPane for DI/DO/AI/AO and Apply button
-            GridPane grid = new GridPane();
-            grid.setHgap(10);
-            grid.setVgap(5);
-            grid.setPadding(new Insets(5));
-    
-            Label diLabel = new Label("DI:");
-            Label doLabel = new Label("DO:");
-            Label aiLabel = new Label("AI:");
-            Label aoLabel = new Label("AO:");
-    
+        
             config.diTextField = new TextField("2");
             config.doTextField = new TextField("2");
             config.aiTextField = new TextField("2");
             config.aoTextField = new TextField("1");
-    
+        
             config.applyButton = new Button("Apply Config");
-    
+        
+            // Start byte fields
+            config.aiStartByteField = new TextField("7E");
+            config.aoStartByteField = new TextField("7E");
+            config.diStartByteField = new TextField("7E");
+            config.doStartByteField = new TextField("7D");
+            config.aiStartByteField.setPrefWidth(40);
+            config.aoStartByteField.setPrefWidth(40);
+            config.diStartByteField.setPrefWidth(40);
+            config.doStartByteField.setPrefWidth(40);
+        
+            // --- GridPane layout
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(8);
+            grid.setPadding(new Insets(10));
+            grid.setMaxWidth(Double.MAX_VALUE);
+        
+            // Column constraints for responsive layout
+            for (int c = 0; c < 8; c++) {
+                ColumnConstraints col = new ColumnConstraints();
+                col.setPercentWidth(12.5); // 8 columns
+                grid.getColumnConstraints().add(col);
+            }
+        
+            // Row 0: Port, Baud, Apply
+            grid.add(new Label("Port:"), 0, 0);
+            grid.add(config.portComboBox, 1, 0);
+            grid.add(new Label("Baud:"), 2, 0);
+            grid.add(config.baudComboBox, 3, 0);
+            grid.add(config.applyButton, 7, 0);
+        
+            // Row 1: DI, DO, AI, AO counts
+            grid.add(new Label("DI:"), 0, 1);
+            grid.add(config.diTextField, 1, 1);
+            grid.add(new Label("DO:"), 2, 1);
+            grid.add(config.doTextField, 3, 1);
+            grid.add(new Label("AI:"), 4, 1);
+            grid.add(config.aiTextField, 5, 1);
+            grid.add(new Label("AO:"), 6, 1);
+            grid.add(config.aoTextField, 7, 1);
+        
+            // Row 2: Start bytes for AI, AO, DI, DO
+            grid.add(new Label("AI Start (hex):"), 0, 2);
+            grid.add(config.aiStartByteField, 1, 2);
+
+            grid.add(new Label("AO Start (hex):"), 2, 2);
+            grid.add(config.aoStartByteField, 3, 2);
+            grid.add(new Label("DI Start (hex):"), 4, 2);
+            grid.add(config.diStartByteField, 5, 2);
+            grid.add(new Label("DO Start (hex):"), 6, 2);
+            grid.add(config.doStartByteField, 7, 2);
+        
+            // Make text fields and combo boxes expand
+            GridPane.setHgrow(config.portComboBox, Priority.ALWAYS);
+            GridPane.setHgrow(config.baudComboBox, Priority.ALWAYS);
+            GridPane.setHgrow(config.diTextField, Priority.ALWAYS);
+            GridPane.setHgrow(config.doTextField, Priority.ALWAYS);
+            GridPane.setHgrow(config.aiTextField, Priority.ALWAYS);
+            GridPane.setHgrow(config.aoTextField, Priority.ALWAYS);
+            GridPane.setHgrow(config.aiStartByteField, Priority.ALWAYS);
+            GridPane.setHgrow(config.aoStartByteField, Priority.ALWAYS);
+            GridPane.setHgrow(config.diStartByteField, Priority.ALWAYS);
+            GridPane.setHgrow(config.doStartByteField, Priority.ALWAYS);
+        
+            // Wrap in a VBox for border/padding
+            VBox configBox = new VBox(grid);
+            configBox.setPadding(new Insets(10));
+            configBox.setStyle("-fx-border-color: gray; -fx-border-width: 1; -fx-border-radius: 5;");
+            configBox.setMaxWidth(Double.MAX_VALUE);
+        
+            serialPortConfigVBox.getChildren().add(configBox);
+            serialPortConfigs.add(config);
+        
+            // (rest of your applyButton logic and event handlers)
             int portIndex = i;
             config.applyButton.setOnAction(e -> {
                 SerialPortConfig thisConfig = serialPortConfigs.get(portIndex);
                 if (!thisConfig.connected) {
                     String portName = thisConfig.portComboBox.getValue();
                     int baud = thisConfig.baudComboBox.getValue();
-                    boolean connected = serialManager.openPort(portName, baud);
+                    thisConfig.serialManager = new SerialPortManager();
+                    boolean connected = thisConfig.serialManager.openPort(portName, baud);
                     if (connected) {
                         thisConfig.connected = true;
                         thisConfig.applyButton.setText("Disconnect");
                         applySerialPortConfig(portIndex);
-                        log("Connected to " + portName + " at " + baud + " baud.");
+                        log("Connected to " + portName + " at " + baud + " baud.", config);
+                        // Start a reading thread for this port
+                        thisConfig.readingThread = new Thread(() -> {
+                            while (thisConfig.connected) {
+                                if (thisConfig.serialManager.isOpen()) {
+                                    byte[] data = thisConfig.serialManager.readData();
+                                    if (data != null) {
+                                        Platform.runLater(() -> handleIncomingData(data, thisConfig));
+                                    }
+                                }
+                                try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+                            }
+                        });
+                        thisConfig.readingThread.setDaemon(true);
+                        thisConfig.readingThread.start();
                     } else {
-                        log("Failed to connect to " + portName);
+                        log("Failed to connect to " + portName,config);
                     }
                 } else {
-                    serialManager.closePort();
+                    // Disconnect
                     thisConfig.connected = false;
+                    if (thisConfig.serialManager != null) {
+                        thisConfig.serialManager.closePort();
+                    }
                     thisConfig.applyButton.setText("Apply Config");
-                    log("Disconnected from port.");
+                    log("Disconnected from port.",config);
                     if (thisConfig.controllerTab != null) {
                         tabPane.getTabs().remove(thisConfig.controllerTab);
                         thisConfig.controllerTab = null;
                     }
+                    // Stop the thread
+                    if (thisConfig.readingThread != null) {
+                        thisConfig.readingThread.interrupt();
+                        thisConfig.readingThread = null;
+                    }
                 }
             });
-    
-            config.diTextField.setMaxWidth(Double.MAX_VALUE);
-            config.doTextField.setMaxWidth(Double.MAX_VALUE);
-            config.aiTextField.setMaxWidth(Double.MAX_VALUE);
-            config.aoTextField.setMaxWidth(Double.MAX_VALUE);
-            GridPane.setHgrow(config.diTextField, Priority.ALWAYS);
-            GridPane.setHgrow(config.doTextField, Priority.ALWAYS);
-            GridPane.setHgrow(config.aiTextField, Priority.ALWAYS);
-            GridPane.setHgrow(config.aoTextField, Priority.ALWAYS);
-    
-            grid.addRow(0, diLabel, config.diTextField, doLabel, config.doTextField);
-            grid.addRow(1, aiLabel, config.aiTextField, aoLabel, config.aoTextField);
-            grid.add(config.applyButton, 0, 2, 4, 1); // Spans across columns
-    
-            // Optional: fixed label width
-            double labelWidth = 30;
-            diLabel.setMinWidth(labelWidth);
-            doLabel.setMinWidth(labelWidth);
-            aiLabel.setMinWidth(labelWidth);
-            aoLabel.setMinWidth(labelWidth);
-    
-            // Combine both rows
-            VBox configBox = new VBox(10, hBoxTop, grid);
-            configBox.setPadding(new Insets(10));
-            configBox.setStyle("-fx-border-color: gray; -fx-border-width: 1; -fx-border-radius: 5;");
-            configBox.setMaxWidth(Double.MAX_VALUE);
-            hBoxTop.setMaxWidth(Double.MAX_VALUE);
-            grid.setMaxWidth(Double.MAX_VALUE);
-            VBox.setVgrow(configBox, Priority.ALWAYS);
-    
-            serialPortConfigVBox.getChildren().add(configBox);
-            serialPortConfigs.add(config);
         }
     }
     
@@ -224,6 +275,12 @@ public class MainWindowController {
     }
 
     private void buildPortUI(SerialPortConfig config) {
+        List<ComboBox<String>> aoModeBoxes = new ArrayList<>();
+        List<TextField> aoValueFields = new ArrayList<>();
+        List<TextField> aoFreqFields = new ArrayList<>();
+        List<TextField> aoAmpFields = new ArrayList<>();
+        List<TextField> aoHighFields = new ArrayList<>();
+        List<TextField> aoLowFields = new ArrayList<>();
         config.diVBox.getChildren().clear();
         config.doVBox.getChildren().clear();
         config.aiVBox.getChildren().clear();
@@ -297,7 +354,7 @@ public class MainWindowController {
                 } else {
                     box.setStyle("-fx-background-color: white; -fx-border-color: black;");
                 }
-                sendDOState(doStates); // You can implement per-port sending here
+                sendDOState(doStates, config); // You can implement per-port sending here
             });
 
             doElement.getChildren().addAll(label, box);
@@ -405,6 +462,12 @@ public class MainWindowController {
         
             Button publishBtn = new Button("Publish");
             ToggleButton autoBtn = new ToggleButton("Auto");
+            aoModeBoxes.add(modeBox);
+            aoValueFields.add(valueField);
+            aoFreqFields.add(freqField);
+            aoAmpFields.add(ampField);
+            aoHighFields.add(highField);
+            aoLowFields.add(lowField);
         
             // --- Visibility handling
             valueLabel.setVisible(true); valueField.setVisible(true);
@@ -457,7 +520,10 @@ public class MainWindowController {
         
             // --- Manual publish
             publishBtn.setOnAction(e -> {
-                sendAOValue(modeBox, valueField, freqField, ampField, highField, lowField, config, index);
+                float[] aoValues = getAllAOValues(
+                    aoModeBoxes, aoValueFields, aoFreqFields, aoAmpFields, aoHighFields, aoLowFields, config
+                );
+                sendAnalogOutputs(aoValues, config);
             });
         
             // --- Auto publish
@@ -471,7 +537,12 @@ public class MainWindowController {
                 }
                 if (isSelected) {
                     ScheduledFuture<?> task = aoScheduler.scheduleAtFixedRate(() -> {
-                        Platform.runLater(() -> sendAOValue(modeBox, valueField, freqField, ampField, highField, lowField, config, index));
+                        Platform.runLater(() -> {
+                            float[] aoValues = getAllAOValues(
+                                aoModeBoxes, aoValueFields, aoFreqFields, aoAmpFields, aoHighFields, aoLowFields, config
+                            );
+                            sendAnalogOutputs(aoValues, config);
+                        });
                     }, 0, 50, TimeUnit.MILLISECONDS); // 20Hz
                     aoAutoTasks.set(index, task);
                 }
@@ -480,25 +551,8 @@ public class MainWindowController {
         
     }
 
-    private void startReadingThread() {
-        Thread thread = new Thread(() -> {
-            while (running) {
-                if (serialManager.isOpen()) {
-                    byte[] data = serialManager.readData();
-                    if (data != null) {
-                        handleIncomingData(data);
-                    }
-                }
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException ignored) {}
-            }
-        });
-        thread.setDaemon(true);
-        thread.start();
-    }
     
-    private void sendDOState(boolean[] states) {
+    private void sendDOState(boolean[] states,  SerialPortConfig config) {
         int byteCount = (states.length + 7) / 8;
         byte[] packet = new byte[byteCount + 2];
         packet[0] = (byte) 0x7D;
@@ -513,89 +567,94 @@ public class MainWindowController {
     
         packet[packet.length - 1] = (byte) 0x33;
     
-        if (serialManager.isOpen()) {
-            serialManager.writeData(packet);
+        if (config.serialManager != null && config.serialManager.isOpen()) {
+            config.serialManager.sendData(packet);
         }
     }
     
-    private void handleIncomingData(byte[] data) {
+    private void handleIncomingData(byte[] data, SerialPortConfig config) {
         uartBuffer.put(data);
-
+    
         int startIdx = -1;
         int endIdx = -1;
         byte[] arr = uartBuffer.array();
         int limit = uartBuffer.position();
-
+    
+        byte aiStart;
+        try {
+            aiStart = (byte) Integer.parseInt(config.aiStartByteField.getText(), 16);
+        } catch (Exception e) {
+            aiStart = 0x7E; // fallback default
+        }
+    
         for (int i = 0; i < limit; i++) {
-            if (arr[i] == PACKET_START && startIdx == -1) {
+            if (arr[i] == aiStart && startIdx == -1) {
                 startIdx = i;
             } else if (arr[i] == PACKET_END && startIdx != -1) {
                 endIdx = i;
                 break;
             }
         }
-
+    
         if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
             int payloadLength = endIdx - startIdx - 1;
             if (payloadLength % 4 == 0) {
                 int numFloats = payloadLength / 4;
                 float[] floatValues = new float[numFloats];
-
+    
                 ByteBuffer payload = ByteBuffer.wrap(arr, startIdx + 1, payloadLength);
                 payload.order(ByteOrder.LITTLE_ENDIAN);
-
+    
                 for (int i = 0; i < numFloats; i++) {
                     floatValues[i] = payload.getFloat();
                 }
-
-                Platform.runLater(() -> updateAICharts(floatValues));
-
+    
+                Platform.runLater(() -> updateAIChartsForConfig(floatValues, config));
+    
                 uartBuffer.position(endIdx + 1);
                 uartBuffer.compact();
             }
         }
-
+    
         if (uartBuffer.position() > 512) {
             uartBuffer.clear();
         }
     }
 
-    private void updateAICharts(float[] values) {
-        for (SerialPortConfig config : serialPortConfigs) {
-            for (int i = 0; i < Math.min(values.length, config.aiSeriesList.size()); i++) {
-                XYChart.Series<Number, Number> series = config.aiSeriesList.get(i);
-                AIChartConfig chartConfig = config.aiChartConfigs.get(i);
-                int now = config.time;
-                int window = chartConfig.timeWindow;
-
-                // Add new data point
-                series.getData().add(new XYChart.Data<>(now, values[i]));
-
-                // Remove points outside the window
-                while (!series.getData().isEmpty() && ((int)series.getData().get(0).getXValue()) < now - window) {
-                    series.getData().remove(0);
-                }
-
-                // Update label
-                if (i < config.aiLabels.size()) {
-                    config.aiLabels.get(i).setText(String.format("%.2f", values[i]));
-                }
-
-                // Update style
-                setSeriesLineColor(series, chartConfig.color);
-                setSeriesPointSize(series, chartConfig.pointSize);
-
-                // Auto-scale Y axis for visible points
-                LineChart<Number, Number> chart = (LineChart<Number, Number>) series.getChart();
-                autoScaleYAxis(chart, series);
-                // Set X axis window
-                NumberAxis xAxis = (NumberAxis) chart.getXAxis();
-                xAxis.setAutoRanging(false);
-                xAxis.setLowerBound(now - window);
-                xAxis.setUpperBound(now);
+    private void updateAIChartsForConfig(float[] values, SerialPortConfig config) {
+        for (int i = 0; i < Math.min(values.length, config.aiSeriesList.size()); i++) {
+            XYChart.Series<Number, Number> series = config.aiSeriesList.get(i);
+            AIChartConfig chartConfig = config.aiChartConfigs.get(i);
+            int now = config.time;
+            int window = chartConfig.timeWindow;
+    
+            // Add new data point
+            series.getData().add(new XYChart.Data<>(now, values[i]));
+    
+            // Remove points outside the window
+            while (!series.getData().isEmpty() && ((int)series.getData().get(0).getXValue()) < now - window) {
+                series.getData().remove(0);
             }
-            config.time++;
+    
+            // Update label
+            if (i < config.aiLabels.size()) {
+                config.aiLabels.get(i).setText(String.format("%.2f", values[i]));
+            }
+    
+            // Update style
+            setSeriesLineColor(series, chartConfig.color);
+            setSeriesPointSize(series, chartConfig.pointSize);
+    
+            // Auto-scale Y axis for visible points
+            LineChart<Number, Number> chart = (LineChart<Number, Number>) series.getChart();
+            autoScaleYAxis(chart, series);
+            // Set X axis window
+            NumberAxis xAxis = (NumberAxis) chart.getXAxis();
+            xAxis.setAutoRanging(false);
+            xAxis.setLowerBound(now - window);
+            xAxis.setUpperBound(now);
         }
+        config.time++;
     }
 
     private void autoScaleYAxis(LineChart<Number, Number> chart, XYChart.Series<Number, Number> series) {
@@ -625,20 +684,10 @@ public class MainWindowController {
         return chart;
     }
 
-    private void log(String message) {
+    private void log(String message, SerialPortConfig config) {
         Platform.runLater(() -> {
-            Tab selectedTab = tabPane.getSelectionModel().getSelectedItem();
-            if (selectedTab != null) {
-                for (SerialPortConfig config : serialPortConfigs) {
-                    if (config.controllerTab == selectedTab && config.logArea != null) {
-                        config.logArea.appendText(message + "\n");
-                        return;
-                    }
-                }
-            }
-            // fallback: log to first config if no tab selected
-            if (!serialPortConfigs.isEmpty() && serialPortConfigs.get(0).logArea != null) {
-                serialPortConfigs.get(0).logArea.appendText(message + "\n");
+            if (config != null && config.logArea != null) {
+                config.logArea.appendText(message + "\n");
             }
         });
     }
@@ -678,62 +727,60 @@ public class MainWindowController {
         });
     }
 
-    private void sendAnalogOutput(float output, SerialPortConfig config) {
-        byte[] frame = new byte[6];
-        frame[0] = 0x7E;
-        int intBits = Float.floatToIntBits(output);
-        frame[1] = (byte)(intBits & 0xFF);
-        frame[2] = (byte)((intBits >> 8) & 0xFF);
-        frame[3] = (byte)((intBits >> 16) & 0xFF);
-        frame[4] = (byte)((intBits >> 24) & 0xFF);
-        frame[5] = 0x33;
-        // Send using your SerialPortManager
-        serialManager.sendData(frame);
-        log("AO sent: " + output);
+    private void sendAnalogOutputs(float[] aoValues, SerialPortConfig config) {
+        int aoCount = aoValues.length;
+        byte[] frame = new byte[2 + aoCount * 4];
+        byte aoStart = (byte) Integer.parseInt(config.aoStartByteField.getText(), 16);
+        frame[0] = aoStart;
+        for (int i = 0; i < aoCount; i++) {
+            int intBits = Float.floatToIntBits(aoValues[i]);
+            frame[1 + i * 4] = (byte)(intBits & 0xFF);
+            frame[2 + i * 4] = (byte)((intBits >> 8) & 0xFF);
+            frame[3 + i * 4] = (byte)((intBits >> 16) & 0xFF);
+            frame[4 + i * 4] = (byte)((intBits >> 24) & 0xFF);
+        }
+        frame[frame.length - 1] = 0x33;
+        if (config.serialManager != null && config.serialManager.isOpen()) {
+            config.serialManager.sendData(frame);
+            log("AO frame sent: " + java.util.Arrays.toString(aoValues), config);
+        } else {
+            log("Port not open for AO send.", config);
+        }
     }
 
-    private void sendAOValue(
-        ComboBox<String> modeBox,
-        TextField valueField,
-        TextField freqField,
-        TextField ampField,
-        TextField highField,
-        TextField lowField,
-        SerialPortConfig config,
-        int index
+    private float[] getAllAOValues(
+        List<ComboBox<String>> aoModeBoxes,
+        List<TextField> aoValueFields,
+        List<TextField> aoFreqFields,
+        List<TextField> aoAmpFields,
+        List<TextField> aoHighFields,
+        List<TextField> aoLowFields,
+        SerialPortConfig config
     ) {
-        String mode = modeBox.getValue();
-        float output = 0f;
-        if ("Raw Value".equals(mode)) {
+        int aoCount = aoModeBoxes.size();
+        float[] aoValues = new float[aoCount];
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < aoCount; i++) {
+            String mode = aoModeBoxes.get(i).getValue();
             try {
-                output = Float.parseFloat(valueField.getText());
+                if ("Raw Value".equals(mode)) {
+                    aoValues[i] = Float.parseFloat(aoValueFields.get(i).getText());
+                } else if ("Sine Wave".equals(mode)) {
+                    float freq = Float.parseFloat(aoFreqFields.get(i).getText());
+                    float amp = Float.parseFloat(aoAmpFields.get(i).getText());
+                    aoValues[i] = (float)(amp * Math.sin(2 * Math.PI * freq * now / 1000.0));
+                } else if ("Square Wave".equals(mode)) {
+                    float freq = Float.parseFloat(aoFreqFields.get(i).getText());
+                    float high = Float.parseFloat(aoHighFields.get(i).getText());
+                    float low = Float.parseFloat(aoLowFields.get(i).getText());
+                    double period = 1000.0 / freq;
+                    aoValues[i] = ((now % period) < (period / 2)) ? high : low;
+                }
             } catch (NumberFormatException ex) {
-                log("Invalid raw value for AO" + index);
-                return;
-            }
-        } else if ("Sine Wave".equals(mode)) {
-            try {
-                float freq = Float.parseFloat(freqField.getText());
-                float amp = Float.parseFloat(ampField.getText());
-                long now = System.currentTimeMillis();
-                output = (float)(amp * Math.sin(2 * Math.PI * freq * now / 1000.0));
-            } catch (NumberFormatException ex) {
-                log("Invalid sine config for AO" + index);
-                return;
-            }
-        } else if ("Square Wave".equals(mode)) {
-            try {
-                float freq = Float.parseFloat(freqField.getText());
-                float high = Float.parseFloat(highField.getText());
-                float low = Float.parseFloat(lowField.getText());
-                long now = System.currentTimeMillis();
-                double period = 1000.0 / freq;
-                output = ((now % period) < (period / 2)) ? high : low;
-            } catch (NumberFormatException ex) {
-                log("Invalid square config for AO" + index);
-                return;
+                aoValues[i] = 0f;
+                log("Invalid AO config for AO" + i, config);
             }
         }
-        sendAnalogOutput(output, config);
+        return aoValues;
     }
 }
